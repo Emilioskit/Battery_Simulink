@@ -537,7 +537,7 @@ rate_curves = {
 currents_A = [1, 2.5, 5, 10, 20, 30, 50, 60];
 
 temp_curves = {
-    LiIon_5A_0C, LiIon_5A_23C_t, LiIon_5A_45C, LiIon_5A_60C, LiIon_5A_10C, 
+    LiIon_5A_0C,LiIon_5A_10C, LiIon_5A_23C_t, LiIon_5A_45C, LiIon_5A_60C 
 };
 
 total_cap = 5000; %later we see if this is fine
@@ -590,14 +590,99 @@ OCV = smooth(SOC_vec, OCV, 'sgolay');
 %we have obtained OCV
 
 %%
-%TEMPS--------------------------------------------------------------------
-temps_K = [273.15, 283.15, 296.15, 318.15, 333.15]; % 0, 10, 23, 45, 60 C
-
+% TEMPS
+temps_K = [273.15, 283.15, 296.15, 318.15, 333.15]; % 0,10,23,45,60 C
 R0_mat = NaN(length(SOC_vec), length(temps_K));
 
 for i = 1:length(temps_K)
-    % 1. find valid SOC range for this temperature curve
-    % 2. evaluate fits_t{i} over that range
-    % 3. calculate R0 = (OCV - V) / 5
-    % 4. store in R0_mat(:, i)
+    valid = SOC_vec <= socs_t{i}(end);
+    V_temp = fits_t{i}(SOC_vec(valid));
+    R0_mat(valid, i) = (OCV(valid) - V_temp) / 5;
 end
+
+% Clip, smooth, last-value-hold
+R0_mat = max(R0_mat, 0);
+for i = 1:length(temps_K)
+    col = smooth(R0_mat(:,i), 'lowess');
+    col = max(col, 0);
+    last_valid = find(~isnan(col), 1, 'last');
+    col(isnan(col)) = col(last_valid);
+    R0_mat(:,i) = col;
+end
+
+
+
+%% 11 point version
+BattChargeMax = 5.0;
+SOCbkpts = (0:0.1:1)';                        % define FIRST
+[~, idx] = min(abs(SOC_vec - SOCbkpts'), [], 1);
+R0_sampled = R0_mat(idx, :);                  % 11x5
+CapLUTBp = SOCbkpts;                          % 11x1
+Em_table = repmat(flipud(OCV(idx)), 1, length(temps_K)); % 11x5
+RInt = max(flipud(R0_sampled), 0.001);        % 11x5
+BattTempBp = temps_K;                     % 1x5 row vector
+CapSOCBp = SOCbkpts;                          % 11x1
+BattCapInit = 5.0;
+
+%% 101 point version
+BattChargeMax = 5.0;
+SOCbkpts = (0:0.1:1)';
+[~, idx] = min(abs(SOC_vec - SOCbkpts'), [], 1);
+R0_sampled = R0_mat(idx, :);                  % 11x5
+CapLUTBp = SOC_vec;                           % 101x1
+Em_table = repmat(flipud(OCV), 1, length(temps_K)); % 101x5
+R0_full = NaN(length(SOC_vec), length(temps_K));
+for i = 1:length(temps_K)
+    R0_full(:,i) = interp1(SOCbkpts, R0_sampled(:,i), SOC_vec, 'linear', 'extrap');
+end
+RInt = max(flipud(R0_full), 0.001);           % 101x5
+BattTempBp = temps_K;                     % 1x5 row vector
+CapSOCBp = SOC_vec;                           % 101x1
+BattCapInit = 5.0;
+
+%%
+% Simulation output simulate for 3600 seconds
+t_sim = out.voltage_out.Time;        % seconds
+V_sim = out.voltage_out.Data;
+
+% Datasheet - convert capacity to time
+% capacity in mAh, current = 5A, so time = (mAh / 1000) / 5A * 3600s
+t_data = LiIon_5A_23C_t(:,1) / 1000 / 5 * 3600;  % seconds
+V_data = LiIon_5A_23C_t(:,2);
+
+figure; hold on;
+plot(t_sim,  V_sim,  'b',   'LineWidth', 2, 'DisplayName', 'Simulation')
+plot(t_data, V_data, 'r--', 'LineWidth', 2, 'DisplayName', 'Datasheet 5A 23C')
+xlabel('Time (s)'); ylabel('Voltage (V)')
+title('Simulation vs Datasheet - 5A discharge at 23°C')
+legend; grid on;
+
+
+%%
+% graphing validation - 30A simulate for 600 seconds
+t_sim = out.voltage_out.Time;
+V_sim = out.voltage_out.Data;
+
+t_data = LiIon_30A_23C(:,1) / 1000 / 30 * 3600;  % 30A, not 5A
+V_data = LiIon_30A_23C(:,2);
+
+figure; hold on;
+plot(t_sim,  V_sim,  'b',   'LineWidth', 2, 'DisplayName', 'Simulation')
+plot(t_data, V_data, 'r--', 'LineWidth', 2, 'DisplayName', 'Datasheet 30A 23C')
+xlabel('Time (s)'); ylabel('Voltage (V)')
+title('Simulation vs Datasheet - 30A discharge at 23°C')
+legend; grid on;
+
+%%
+t_sim = out.voltage_out.Time;
+V_sim = out.voltage_out.Data;
+
+t_data = LiIon_5A_0C(:,1) / 1000 / 5 * 3600;
+V_data = LiIon_5A_0C(:,2);
+
+figure; hold on;
+plot(t_sim,  V_sim,  'b',   'LineWidth', 2, 'DisplayName', 'Simulation')
+plot(t_data, V_data, 'r--', 'LineWidth', 2, 'DisplayName', 'Datasheet 5A 0C')
+xlabel('Time (s)'); ylabel('Voltage (V)')
+title('Simulation vs Datasheet - 5A discharge at 0°C')
+legend; grid on;

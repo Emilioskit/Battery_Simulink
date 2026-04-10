@@ -612,55 +612,32 @@ end
 
 
 
-%%
-%stuff for simulink
-
-%this is with just 11 values
-
+%% 11 point version
 BattChargeMax = 5.0;
-% Use CapSOCBp (11 points) as the SOC vector, not CapLUTBp (101 points)
-CapLUTBp = SOCbkpts;  % 11x1, matches RInt rows
-
-% And fix Em_table to match — sample OCV at same 11 points
-Em_table = flipud(OCV(idx));  % 11x1, same idx you used for R0_sampled
-
-% Fix the OCV temperature warning preemptively
-Em_table = repmat(Em_table, 1, length(temps_K));  % 11x5
-SOCbkpts = (0:0.1:1)';
+SOCbkpts = (0:0.1:1)';                        % define FIRST
 [~, idx] = min(abs(SOC_vec - SOCbkpts'), [], 1);
-R0_sampled = R0_mat(idx, :);       % 11x5
-RInt = flipud(R0_sampled);         % 11x5, NO transpose
-RInt = max(RInt, 0.001);           % no zeros
-
-BattTempBp = temps_K;              % must be 1x5 row vector
-CapSOCBp = SOCbkpts;
+R0_sampled = R0_mat(idx, :);                  % 11x5
+CapLUTBp = SOCbkpts;                          % 11x1
+Em_table = repmat(flipud(OCV(idx)), 1, length(temps_K)); % 11x5
+RInt = max(flipud(R0_sampled), 0.001);        % 11x5
+BattTempBp = temps_K;                     % 1x5 row vector
+CapSOCBp = SOCbkpts;                          % 11x1
 BattCapInit = 5.0;
 
-%%
-
-%this is with 101 values
-
-% stuff for simulink
-% 101 point version
+%% 101 point version
 BattChargeMax = 5.0;
-
-% OCV - full 101 point resolution
-CapLUTBp = SOC_vec;                          % 101x1
-Em_table = repmat(flipud(OCV), 1, length(temps_K));  % 101x5
-
-% Resistance - interpolate up to 101 points
 SOCbkpts = (0:0.1:1)';
 [~, idx] = min(abs(SOC_vec - SOCbkpts'), [], 1);
-R0_sampled = R0_mat(idx, :);                 % 11x5
-
+R0_sampled = R0_mat(idx, :);                  % 11x5
+CapLUTBp = SOC_vec;                           % 101x1
+Em_table = repmat(flipud(OCV), 1, length(temps_K)); % 101x5
 R0_full = NaN(length(SOC_vec), length(temps_K));
 for i = 1:length(temps_K)
     R0_full(:,i) = interp1(SOCbkpts, R0_sampled(:,i), SOC_vec, 'linear', 'extrap');
 end
-
-RInt = max(flipud(R0_full), 0.001);          % 101x5
-BattTempBp = temps_K;                        % 1x5 row vector
-CapSOCBp = SOC_vec;                          % 101x1
+RInt = max(flipud(R0_full), 0.001);           % 101x5
+BattTempBp = temps_K;                     % 1x5 row vector
+CapSOCBp = SOC_vec;                           % 101x1
 BattCapInit = 5.0;
 
 %%
@@ -697,6 +674,7 @@ title('Simulation vs Datasheet - 30A discharge at 23°C')
 legend; grid on;
 
 %%
+%test at 5A at 0 celsius for 3600 seconds
 t_sim = out.voltage_out.Time;
 V_sim = out.voltage_out.Data;
 
@@ -709,3 +687,5 @@ plot(t_data, V_data, 'r--', 'LineWidth', 2, 'DisplayName', 'Datasheet 5A 0C')
 xlabel('Time (s)'); ylabel('Voltage (V)')
 title('Simulation vs Datasheet - 5A discharge at 0°C')
 legend; grid on;
+
+%%
